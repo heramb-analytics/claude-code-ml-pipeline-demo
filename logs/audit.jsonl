@@ -1,0 +1,14 @@
+{"ts": "2026-03-12T20:44:50.473791", "file": "?"}
+{"ts": "2026-03-12T20:46:17.489671", "file": "?"}
+{"event": "feature_engineering", "timestamp": "2026-03-12T20:46:21.630104+00:00", "input_rows": 10000, "output_features": 23, "output_rows": 10000, "train_rows": 7000, "output_path": "/Users/heramb/claude-code/claude-code-ml-pipeline-demo/data/processed/features.parquet", "schema_path": "/Users/heramb/claude-code/claude-code-ml-pipeline-demo/data/processed/feature_schema.json"}
+{"ts": "2026-03-12T20:47:53.151292", "file": "?"}
+{"ts": "2026-03-12T20:47:58.946866", "file": "?"}
+{"event": "feature_engineering", "timestamp": "2026-03-12T20:48:25.689942+00:00", "input_rows": 10000, "output_features": 23, "output_rows": 10000, "train_rows": 7000, "output_path": "/Users/heramb/claude-code/claude-code-ml-pipeline-demo/data/processed/features.parquet", "schema_path": "/Users/heramb/claude-code/claude-code-ml-pipeline-demo/data/processed/feature_schema.json"}
+{"ts": "2026-03-12T20:48:27.044587", "file": "?"}
+{"event": "model_training", "timestamp": "2026-03-13T02:19:05.687376", "algorithm": "IsolationForest", "test_f1": 0.8333, "test_roc_auc": 0.9982}
+{"ts": "2026-03-12T20:49:09.523349", "file": "?"}
+{"ts": "2026-03-12T20:49:11.820084", "file": "?"}
+{"ts": "2026-03-12T20:49:33.736063", "file": "?"}
+{"ts": "2026-03-12T20:51:09.409087", "file": "?"}
+{"ts": "2026-03-12T20:56:35.960703", "file": "?"}
+{"ts": "2026-03-12T20:57:03.246004", "file": "?"}

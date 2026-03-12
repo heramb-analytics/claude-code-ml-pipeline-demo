@@ -1,0 +1,78 @@
+{
+  "run_timestamp": "2026-03-13T02:15:04.251731",
+  "total_checks": 10,
+  "passed": 10,
+  "failed": 0,
+  "checks": [
+    {
+      "check_name": "required_columns",
+      "passed": true,
+      "severity": "critical",
+      "message": "All required columns present",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "no_duplicate_ids",
+      "passed": true,
+      "severity": "critical",
+      "message": "0 duplicate transaction_id(s) found",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "no_nulls_in_key_cols",
+      "passed": true,
+      "severity": "critical",
+      "message": "No nulls in key columns",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "amount_positive",
+      "passed": true,
+      "severity": "critical",
+      "message": "0 rows with amount <= 0",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "amount_under_1m",
+      "passed": true,
+      "severity": "critical",
+      "message": "0 rows with amount >= 1M",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "timestamp_range_valid",
+      "passed": true,
+      "severity": "critical",
+      "message": "0 rows with timestamp outside 2020\u20132030",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "target_binary",
+      "passed": true,
+      "severity": "warning",
+      "message": "0 non-binary is_anomaly values",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "merchant_category_valid",
+      "passed": true,
+      "severity": "warning",
+      "message": "0 rows with unknown merchant_category",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "transaction_hour_valid",
+      "passed": true,
+      "severity": "warning",
+      "message": "0 rows with invalid transaction_hour",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "merchant_id_format",
+      "passed": true,
+      "severity": "warning",
+      "message": "0 merchant_ids with invalid format",
+      "rows_affected": 0
+    }
+  ]
+}
