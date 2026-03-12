@@ -1,0 +1,58 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Write(src/**)", "Write(tests/**)", "Write(models/**)",
+      "Write(logs/**)", "Write(reports/**)", "Write(docs/**)",
+      "Write(.claude/**)",
+      "Bash(pytest*)", "Bash(python3*)", "Bash(python*)",
+      "Bash(uvicorn*)", "Bash(curl*)",
+      "Bash(git add*)", "Bash(git commit*)", "Bash(git push*)",
+      "Bash(git checkout*)", "Bash(git branch*)",
+      "Bash(git worktree*)",
+      "Bash(ls*)", "Bash(cat*)", "Bash(echo*)", "Bash(tail*)", "Bash(mkdir*)"
+    ],
+    "deny": [
+      "Write(data/raw/**)",
+      "Bash(rm -rf*)",
+      "Bash(sudo*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Write",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 -c \"import json,datetime,os; open('logs/audit.jsonl','a').write(json.dumps({'ts':datetime.datetime.utcnow().isoformat(),'file':os.environ.get('CLAUDE_TOOL_INPUT_PATH','?')})+'\\n')\" 2>/dev/null || true"
+      }]
+    }]
+  },
+  "mcpServers": {
+    "git": {
+      "command": "uvx",
+      "args": ["mcp-server-git", "--repository", "."]
+    },
+    "jira": {
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "env": {
+        "JIRA_URL": "${JIRA_URL}",
+        "JIRA_USERNAME": "${JIRA_USER}",
+        "JIRA_API_TOKEN": "${JIRA_TOKEN}"
+      }
+    },
+    "confluence": {
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "env": {
+        "CONFLUENCE_URL": "${CONFLUENCE_URL}",
+        "CONFLUENCE_USERNAME": "${CONFLUENCE_USER}",
+        "CONFLUENCE_PERSONAL_TOKEN": "${CONFLUENCE_TOKEN}"
+      }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    }
+  }
+}
