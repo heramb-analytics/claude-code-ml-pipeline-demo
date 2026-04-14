@@ -1,16 +1,11 @@
-# Credentials — never committed
-.env
-*.token
-
-# Python
 __pycache__/
 *.pyc
 *.pyo
-.venv/
-
-# Model binaries (large)
+.env
+.venv
+venv/
 *.pkl
-
-# OS
+*.egg-info/
+.pytest_cache/
 .DS_Store
-Thumbs.db
+logs/audit.jsonl

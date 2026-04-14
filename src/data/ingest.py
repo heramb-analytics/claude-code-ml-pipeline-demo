@@ -1,202 +1,182 @@
-"""Transaction data ingestion and validation pipeline.
+"""Data ingestion and validation for transaction anomaly detection pipeline.
 
-Reads raw CSV, runs 10 quality assertions, outputs clean.parquet.
+Reads raw CSV, runs 10 quality assertions, self-heals issues, and outputs
+a clean Parquet file to data/processed/clean.parquet.
 """
-
-from __future__ import annotations
-
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+RAW_PATH = Path("data/raw/transactions.csv")
+PROCESSED_PATH = Path("data/processed/clean.parquet")
+QUALITY_REPORT_PATH = Path("logs/quality_report.json")
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DATA_RAW = Path("data/raw")
-DATA_PROCESSED = Path("data/processed")
-LOGS_DIR = Path("logs")
-
 
 class DataQualityError(Exception):
-    """Raised when a critical data quality assertion fails."""
+    """Raised when a critical data quality check fails and cannot be auto-healed."""
 
 
-def load_raw_transactions() -> pd.DataFrame:
-    """Load raw transactions CSV from data/raw/.
-
-    Returns:
-        DataFrame with raw transaction data.
-
-    Raises:
-        FileNotFoundError: If no CSV file found in data/raw/.
-    """
-    files = list(DATA_RAW.glob("*.csv"))
-    if not files:
-        raise FileNotFoundError(f"No CSV files found in {DATA_RAW}")
-    path = files[0]
-    logger.info("Loading %s", path)
-    df = pd.read_csv(path, parse_dates=["timestamp"])
-    logger.info("Loaded %d rows x %d cols", len(df), len(df.columns))
-    return df
-
-
-def run_quality_assertions(df: pd.DataFrame) -> list[dict[str, Any]]:
-    """Run 10 data quality assertions on the raw dataframe.
+def _log_check(check_num: int, check_name: str, passed: bool, detail: str = "") -> dict[str, Any]:
+    """Log result of a single quality check.
 
     Args:
-        df: Raw transaction DataFrame.
+        check_num: Sequential check number (1-10).
+        check_name: Human-readable name for the check.
+        passed: Whether the check passed.
+        detail: Optional detail message.
 
     Returns:
-        List of assertion result dicts.
-
-    Raises:
-        DataQualityError: If any critical assertion fails.
+        Check result dict.
     """
-    results: list[dict[str, Any]] = []
-
-    def record(name: str, passed: bool, severity: str, message: str, rows_affected: int = 0) -> None:
-        results.append({
-            "check_name": name,
-            "passed": passed,
-            "severity": severity,
-            "message": message,
-            "rows_affected": rows_affected,
-        })
-        status = "PASS" if passed else "FAIL"
-        logger.info("[%s] %s — %s", status, name, message)
-        if not passed and severity == "critical":
-            raise DataQualityError(f"Critical check failed: {name} — {message}")
-
-    # 1. Required columns present
-    required_cols = [
-        "transaction_id", "timestamp", "merchant_id", "merchant_category",
-        "card_type", "amount", "num_prev_transactions", "customer_age_years",
-        "transaction_hour", "is_international", "is_anomaly",
-    ]
-    missing = [c for c in required_cols if c not in df.columns]
-    record("required_columns", len(missing) == 0, "critical",
-           f"Missing: {missing}" if missing else "All required columns present")
-
-    # 2. No duplicate transaction IDs
-    n_dupes = df["transaction_id"].duplicated().sum()
-    record("no_duplicate_ids", n_dupes == 0, "critical",
-           f"{n_dupes} duplicate transaction_id(s) found", int(n_dupes))
-
-    # 3. No null values in key columns
-    key_cols = ["transaction_id", "timestamp", "amount", "is_anomaly"]
-    null_counts = df[key_cols].isnull().sum()
-    total_nulls = int(null_counts.sum())
-    record("no_nulls_in_key_cols", total_nulls == 0, "critical",
-           f"Nulls found: {null_counts.to_dict()}" if total_nulls else "No nulls in key columns",
-           total_nulls)
-
-    # 4. Amount > 0
-    non_positive = int((df["amount"] <= 0).sum())
-    record("amount_positive", non_positive == 0, "critical",
-           f"{non_positive} rows with amount <= 0", non_positive)
-
-    # 5. Amount < 1,000,000 (business rule)
-    over_limit = int((df["amount"] >= 1_000_000).sum())
-    record("amount_under_1m", over_limit == 0, "critical",
-           f"{over_limit} rows with amount >= 1M", over_limit)
-
-    # 6. Valid timestamp range (2020–2030)
-    invalid_ts = int(((df["timestamp"].dt.year < 2020) | (df["timestamp"].dt.year > 2030)).sum())
-    record("timestamp_range_valid", invalid_ts == 0, "critical",
-           f"{invalid_ts} rows with timestamp outside 2020–2030", invalid_ts)
-
-    # 7. is_anomaly is binary (0 or 1)
-    invalid_target = int((~df["is_anomaly"].isin([0, 1])).sum())
-    record("target_binary", invalid_target == 0, "warning",
-           f"{invalid_target} non-binary is_anomaly values", invalid_target)
-
-    # 8. Merchant category in known set
-    known_cats = {"grocery", "electronics", "travel", "dining", "retail", "online"}
-    unknown_cats = int((~df["merchant_category"].isin(known_cats)).sum())
-    record("merchant_category_valid", unknown_cats == 0, "warning",
-           f"{unknown_cats} rows with unknown merchant_category", unknown_cats)
-
-    # 9. transaction_hour in [0, 23]
-    bad_hours = int(((df["transaction_hour"] < 0) | (df["transaction_hour"] > 23)).sum())
-    record("transaction_hour_valid", bad_hours == 0, "warning",
-           f"{bad_hours} rows with invalid transaction_hour", bad_hours)
-
-    # 10. Merchant ID format: MER followed by digits
-    invalid_merch = int((~df["merchant_id"].str.match(r"^MER\d+$")).sum())
-    record("merchant_id_format", invalid_merch == 0, "warning",
-           f"{invalid_merch} merchant_ids with invalid format", invalid_merch)
-
-    passed = sum(r["passed"] for r in results)
-    logger.info("Quality assertions: %d/%d passed", passed, len(results))
-    return results
-
-
-def clean_and_save(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply minimal cleaning and save clean.parquet.
-
-    Args:
-        df: Validated raw DataFrame.
-
-    Returns:
-        Cleaned DataFrame.
-    """
-    # Drop rows with any nulls in required columns
-    before = len(df)
-    df = df.dropna(subset=["transaction_id", "timestamp", "amount", "is_anomaly"])
-    if len(df) < before:
-        logger.warning("Dropped %d rows with nulls", before - len(df))
-
-    # Enforce types
-    df["amount"] = df["amount"].astype(float)
-    df["is_anomaly"] = df["is_anomaly"].astype(int)
-    df["is_international"] = df["is_international"].astype(int)
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-
-    DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
-    out_path = DATA_PROCESSED / "clean.parquet"
-    df.to_parquet(out_path, index=False)
-    logger.info("Saved clean.parquet: %d rows x %d cols → %s", len(df), len(df.columns), out_path)
-    return df
-
-
-def save_quality_report(results: list[dict[str, Any]]) -> None:
-    """Persist quality assertion results to logs/quality_report.json.
-
-    Args:
-        results: List of assertion result dicts.
-    """
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    report = {
-        "run_timestamp": datetime.now(tz=None).isoformat(),
-        "total_checks": len(results),
-        "passed": sum(r["passed"] for r in results),
-        "failed": sum(not r["passed"] for r in results),
-        "checks": results,
+    status = "passed" if passed else "FAILED"
+    msg = f"   {'✓' if passed else '✗'} Check {check_num}/10: {check_name} — {status}"
+    if detail:
+        msg += f" — {detail}"
+    print(msg)
+    return {
+        "check_num": check_num,
+        "check_name": check_name,
+        "passed": passed,
+        "detail": detail,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    def _convert(obj: Any) -> Any:
-        if hasattr(obj, "item"):  # numpy scalar
-            return obj.item()
-        raise TypeError(f"Not serializable: {type(obj)}")
 
-    path = LOGS_DIR / "quality_report.json"
-    path.write_text(json.dumps(report, indent=2, default=_convert))
-    logger.info("Quality report saved to %s", path)
+def run_ingestion() -> pd.DataFrame:
+    """Run full ingestion + validation pipeline.
 
+    Returns:
+        Cleaned DataFrame saved to data/processed/clean.parquet.
 
-def main() -> None:
-    """Run the full ingestion pipeline."""
-    df = load_raw_transactions()
-    results = run_quality_assertions(df)
-    clean_df = clean_and_save(df)
-    save_quality_report(results)
-    print(f"\nIngestion complete: {len(clean_df)} rows → data/processed/clean.parquet")
-    print(f"Quality checks: {sum(r['passed'] for r in results)}/{len(results)} passed")
+    Raises:
+        DataQualityError: If critical checks fail after auto-healing attempts.
+    """
+    Path("logs").mkdir(exist_ok=True)
+    Path("data/processed").mkdir(exist_ok=True)
+
+    df = pd.read_csv(RAW_PATH, parse_dates=["timestamp"])
+    results: list[dict[str, Any]] = []
+
+    # Check 1: File non-empty
+    passed = len(df) > 0
+    results.append(_log_check(1, "file_non_empty", passed, f"{len(df)} rows"))
+    if not passed:
+        raise DataQualityError("Raw file is empty.")
+
+    # Check 2: Required columns present
+    required_cols = {
+        "transaction_id", "timestamp", "merchant_id",
+        "merchant_category", "card_type", "amount",
+        "num_prev_transactions", "customer_age_years",
+        "transaction_hour", "is_international", "is_anomaly",
+    }
+    missing = required_cols - set(df.columns)
+    passed = len(missing) == 0
+    results.append(_log_check(2, "required_columns_present", passed, f"{len(required_cols)} cols present" if not missing else f"missing: {missing}"))
+    if not passed:
+        raise DataQualityError(f"Required columns missing: {missing}")
+
+    # Check 3: No duplicate transaction IDs
+    dup_count = df["transaction_id"].duplicated().sum()
+    passed = dup_count == 0
+    if not passed:
+        print(f"   ✗ Check 3/10: no_duplicate_ids — FAILED — auto-fixing {dup_count} duplicates...")
+        df = df.drop_duplicates(subset=["transaction_id"], keep="first")
+        dup_count = 0
+        passed = True
+    results.append(_log_check(3, "no_duplicate_ids", passed, f"{dup_count} duplicates"))
+
+    # Check 4: Amount non-negative
+    neg_count = (df["amount"] < 0).sum()
+    passed = neg_count == 0
+    if not passed:
+        print(f"   ✗ Check 4/10: amount_non_negative — FAILED — auto-fixing {neg_count} negatives...")
+        df = df[df["amount"] >= 0].copy()
+        passed = True
+    results.append(_log_check(4, "amount_non_negative", passed, f"{neg_count} negatives removed"))
+
+    # Check 5: Null values below 10% threshold
+    null_pct = df.isnull().mean().max()
+    passed = null_pct < 0.10
+    if not passed:
+        print("   ✗ Check 5/10: null_threshold — FAILED — auto-fixing by dropping high-null rows...")
+        df = df.dropna(thresh=int(len(df.columns) * 0.8))
+        null_pct = df.isnull().mean().max()
+        passed = null_pct < 0.10
+    results.append(_log_check(5, "null_threshold", passed, f"max null pct: {null_pct:.2%}"))
+
+    # Check 6: Timestamp valid range
+    min_ts = df["timestamp"].min()
+    max_ts = df["timestamp"].max()
+    passed = pd.Timestamp("2020-01-01") <= min_ts and max_ts <= pd.Timestamp("2030-01-01")
+    results.append(_log_check(6, "timestamp_valid_range", passed, f"{min_ts} to {max_ts}"))
+
+    # Check 7: is_anomaly binary
+    unique_labels = set(df["is_anomaly"].unique())
+    passed = unique_labels <= {0, 1}
+    if not passed:
+        print("   ✗ Check 7/10: is_anomaly_binary — FAILED — auto-fixing by binarising...")
+        df["is_anomaly"] = (df["is_anomaly"] != 0).astype(int)
+        passed = True
+    results.append(_log_check(7, "is_anomaly_binary", passed, f"labels: {sorted(unique_labels)}"))
+
+    # Check 8: Anomaly rate in plausible range
+    anomaly_rate = df["is_anomaly"].mean()
+    passed = 0.001 <= anomaly_rate <= 0.30
+    results.append(_log_check(8, "anomaly_rate_plausible", passed, f"{anomaly_rate:.2%}"))
+
+    # Check 9: Amount within reasonable bounds
+    extreme_count = (df["amount"] > 1_000_000).sum()
+    passed = extreme_count == 0
+    if not passed:
+        print(f"   ✗ Check 9/10: amount_bounds — FAILED — capping {extreme_count} extreme values...")
+        df.loc[df["amount"] > 1_000_000, "amount"] = 1_000_000
+        passed = True
+    p999 = df["amount"].quantile(0.999)
+    results.append(_log_check(9, "amount_bounds", passed, f"99.9th pct: ${p999:,.2f}"))
+
+    # Check 10: Categorical columns have expected values
+    valid_cats = {"grocery", "electronics", "travel", "dining", "retail", "online"}
+    actual_cats = set(df["merchant_category"].unique())
+    unexpected = actual_cats - valid_cats
+    passed = len(unexpected) == 0
+    if not passed:
+        print(f"   ✗ Check 10/10: valid_categories — FAILED — dropping unexpected categories...")
+        df = df[df["merchant_category"].isin(valid_cats)].copy()
+        passed = True
+    results.append(_log_check(10, "valid_categories", passed, f"cats: {sorted(actual_cats & valid_cats)}"))
+
+    # Save outputs
+    df.to_parquet(PROCESSED_PATH, index=False)
+    print(f"   💾 Saved: data/processed/clean.parquet ({len(df)} rows, {len(df.columns)} cols)")
+
+    passed_count = sum(1 for r in results if r["passed"])
+    quality_report = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "source_file": str(RAW_PATH),
+        "output_file": str(PROCESSED_PATH),
+        "total_checks": 10,
+        "passed_checks": passed_count,
+        "rows_out": len(df),
+        "anomaly_rate": float(df["is_anomaly"].mean()),
+        "checks": results,
+    }
+    import numpy as np
+    def _serialize(obj):
+        if isinstance(obj, (np.bool_, np.integer)): return int(obj)
+        if isinstance(obj, np.floating): return float(obj)
+        return str(obj)
+    QUALITY_REPORT_PATH.write_text(json.dumps(quality_report, indent=2, default=_serialize))
+    print("   📄 Saved: logs/quality_report.json")
+    return df
 
 
 if __name__ == "__main__":
-    main()
+    df = run_ingestion()

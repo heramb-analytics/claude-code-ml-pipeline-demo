@@ -1,78 +1,81 @@
 {
-  "run_timestamp": "2026-04-14T10:02:12.726136",
+  "timestamp": "2026-04-14T04:47:30.932529+00:00",
+  "source_file": "data/raw/transactions.csv",
+  "output_file": "data/processed/clean.parquet",
   "total_checks": 10,
-  "passed": 10,
-  "failed": 0,
+  "passed_checks": 10,
+  "rows_out": 10000,
+  "anomaly_rate": 0.02,
   "checks": [
     {
-      "check_name": "required_columns",
+      "check_num": 1,
+      "check_name": "file_non_empty",
       "passed": true,
-      "severity": "critical",
-      "message": "All required columns present",
-      "rows_affected": 0
+      "detail": "10000 rows",
+      "timestamp": "2026-04-14T04:47:30.914154+00:00"
     },
     {
+      "check_num": 2,
+      "check_name": "required_columns_present",
+      "passed": true,
+      "detail": "11 cols present",
+      "timestamp": "2026-04-14T04:47:30.914164+00:00"
+    },
+    {
+      "check_num": 3,
       "check_name": "no_duplicate_ids",
-      "passed": true,
-      "severity": "critical",
-      "message": "0 duplicate transaction_id(s) found",
-      "rows_affected": 0
+      "passed": 1,
+      "detail": "0 duplicates",
+      "timestamp": "2026-04-14T04:47:30.914534+00:00"
     },
     {
-      "check_name": "no_nulls_in_key_cols",
-      "passed": true,
-      "severity": "critical",
-      "message": "No nulls in key columns",
-      "rows_affected": 0
+      "check_num": 4,
+      "check_name": "amount_non_negative",
+      "passed": 1,
+      "detail": "0 negatives removed",
+      "timestamp": "2026-04-14T04:47:30.914625+00:00"
     },
     {
-      "check_name": "amount_positive",
-      "passed": true,
-      "severity": "critical",
-      "message": "0 rows with amount <= 0",
-      "rows_affected": 0
+      "check_num": 5,
+      "check_name": "null_threshold",
+      "passed": 1,
+      "detail": "max null pct: 0.00%",
+      "timestamp": "2026-04-14T04:47:30.915431+00:00"
     },
     {
-      "check_name": "amount_under_1m",
+      "check_num": 6,
+      "check_name": "timestamp_valid_range",
       "passed": true,
-      "severity": "critical",
-      "message": "0 rows with amount >= 1M",
-      "rows_affected": 0
+      "detail": "2024-01-01 00:00:00 to 2024-02-04 17:15:00",
+      "timestamp": "2026-04-14T04:47:30.915547+00:00"
     },
     {
-      "check_name": "timestamp_range_valid",
+      "check_num": 7,
+      "check_name": "is_anomaly_binary",
       "passed": true,
-      "severity": "critical",
-      "message": "0 rows with timestamp outside 2020\u20132030",
-      "rows_affected": 0
+      "detail": "labels: [np.int64(0), np.int64(1)]",
+      "timestamp": "2026-04-14T04:47:30.915622+00:00"
     },
     {
-      "check_name": "target_binary",
-      "passed": true,
-      "severity": "warning",
-      "message": "0 non-binary is_anomaly values",
-      "rows_affected": 0
+      "check_num": 8,
+      "check_name": "anomaly_rate_plausible",
+      "passed": 1,
+      "detail": "2.00%",
+      "timestamp": "2026-04-14T04:47:30.915651+00:00"
     },
     {
-      "check_name": "merchant_category_valid",
-      "passed": true,
-      "severity": "warning",
-      "message": "0 rows with unknown merchant_category",
-      "rows_affected": 0
+      "check_num": 9,
+      "check_name": "amount_bounds",
+      "passed": 1,
+      "detail": "99.9th pct: $48,497.09",
+      "timestamp": "2026-04-14T04:47:30.915964+00:00"
     },
     {
-      "check_name": "transaction_hour_valid",
+      "check_num": 10,
+      "check_name": "valid_categories",
       "passed": true,
-      "severity": "warning",
-      "message": "0 rows with invalid transaction_hour",
-      "rows_affected": 0
-    },
-    {
-      "check_name": "merchant_id_format",
-      "passed": true,
-      "severity": "warning",
-      "message": "0 merchant_ids with invalid format",
-      "rows_affected": 0
+      "detail": "cats: ['dining', 'electronics', 'grocery', 'online', 'retail', 'travel']",
+      "timestamp": "2026-04-14T04:47:30.916211+00:00"
     }
   ]
 }

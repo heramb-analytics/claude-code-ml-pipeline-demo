@@ -1,54 +1,35 @@
 {
-  "model_name": "pipeline_model",
-  "algorithm": "IsolationForest",
-  "problem_type": "anomaly_detection",
-  "version": "1.0.0",
-  "trained_at": "2026-03-13T02:19:05.687135",
-  "feature_count": 23,
-  "feature_names": [
+  "timestamp": "2026-04-14T04:51:41.419100+00:00",
+  "algorithm": "XGBoost",
+  "best_params": {
+    "n_estimators": 100,
+    "max_depth": 4,
+    "learning_rate": 0.1
+  },
+  "train_size": 7000,
+  "val_size": 1500,
+  "test_size": 1500,
+  "roc_auc": 0.9999,
+  "pr_auc": 0.997,
+  "f1_score": 0.9831,
+  "precision": 1.0,
+  "recall": 0.9667,
+  "feature_cols": [
     "amount",
+    "log_amount",
+    "amount_zscore",
     "num_prev_transactions",
     "customer_age_years",
+    "transaction_hour",
     "is_international",
+    "day_of_week",
     "is_weekend",
-    "hour_sin",
-    "hour_cos",
-    "is_night_hour",
-    "amount_log1p",
-    "amount_zscore",
-    "amount_iqr_flag",
-    "amount_to_mean_ratio",
-    "amount_x_international",
-    "amount_x_night",
-    "merchant_cat_dining",
-    "merchant_cat_electronics",
-    "merchant_cat_grocery",
-    "merchant_cat_online",
-    "merchant_cat_retail",
-    "merchant_cat_travel",
-    "card_type_credit",
-    "card_type_debit",
-    "card_type_prepaid"
-  ],
-  "train": {
-    "precision": 0.85,
-    "recall": 0.85,
-    "f1": 0.85,
-    "roc_auc": 0.9988,
-    "avg_precision": 0.947
-  },
-  "val": {
-    "precision": 0.8966,
-    "recall": 0.8667,
-    "f1": 0.8814,
-    "roc_auc": 0.9995,
-    "avg_precision": 0.977
-  },
-  "test": {
-    "precision": 0.8333,
-    "recall": 0.8333,
-    "f1": 0.8333,
-    "roc_auc": 0.9982,
-    "avg_precision": 0.9269
-  }
+    "is_night",
+    "category_code",
+    "card_type_code",
+    "high_frequency_merchant",
+    "amount_risk",
+    "age_risk",
+    "composite_risk"
+  ]
 }

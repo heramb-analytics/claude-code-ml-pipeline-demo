@@ -1,91 +1,92 @@
 {
+  "timestamp": "2026-04-14T04:48:27.096850+00:00",
   "total_checks": 12,
-  "passed": 12,
-  "failed": 0,
+  "passed_checks": 12,
+  "rows": 10000,
   "checks": [
     {
-      "check_name": "check_required_columns",
+      "check_num": 1,
+      "check_name": "row_count_sufficient",
       "passed": true,
-      "severity": "critical",
-      "message": "All required columns present.",
-      "rows_affected": 0
+      "detail": "10,000 rows",
+      "timestamp": "2026-04-14T04:48:27.094333+00:00"
     },
     {
-      "check_name": "check_dtypes",
+      "check_num": 2,
+      "check_name": "no_all_null_columns",
       "passed": true,
-      "severity": "critical",
-      "message": "Dtype constraints satisfied.",
-      "rows_affected": 0
+      "detail": "null cols: []",
+      "timestamp": "2026-04-14T04:48:27.095646+00:00"
     },
     {
-      "check_name": "check_no_nulls_key_cols",
+      "check_num": 3,
+      "check_name": "target_col_exists",
       "passed": true,
-      "severity": "critical",
-      "message": "No nulls in key columns.",
-      "rows_affected": 0
+      "detail": "",
+      "timestamp": "2026-04-14T04:48:27.095651+00:00"
     },
     {
-      "check_name": "check_amount_positive",
+      "check_num": 4,
+      "check_name": "no_infinite_values",
       "passed": true,
-      "severity": "critical",
-      "message": "All amounts are positive.",
-      "rows_affected": 0
+      "detail": "0 inf values",
+      "timestamp": "2026-04-14T04:48:27.096373+00:00"
     },
     {
-      "check_name": "check_timestamp_valid",
+      "check_num": 5,
+      "check_name": "log_amount_non_negative",
       "passed": true,
-      "severity": "critical",
-      "message": "All timestamps in valid range [2020-01-01, 2030-12-31].",
-      "rows_affected": 0
+      "detail": "min: 0.6931",
+      "timestamp": "2026-04-14T04:48:27.096457+00:00"
     },
     {
-      "check_name": "check_categories_valid",
+      "check_num": 6,
+      "check_name": "zscore_range_reasonable",
       "passed": true,
-      "severity": "critical",
-      "message": "All merchant categories are valid: ['dining', 'electronics', 'grocery', 'online', 'retail', 'travel'].",
-      "rows_affected": 0
+      "detail": "range: [-0.15, 11.00]",
+      "timestamp": "2026-04-14T04:48:27.096496+00:00"
     },
     {
-      "check_name": "check_amount_mean_within_3std",
+      "check_num": 7,
+      "check_name": "category_codes_valid",
       "passed": true,
-      "severity": "warning",
-      "message": "Mean amount 652.92 is within 3 std (13420.62) of expected centre 500.0.",
-      "rows_affected": 0
+      "detail": "0 invalid codes",
+      "timestamp": "2026-04-14T04:48:27.096605+00:00"
     },
     {
-      "check_name": "check_no_infinite_values",
+      "check_num": 8,
+      "check_name": "class_imbalance_expected",
       "passed": true,
-      "severity": "warning",
-      "message": "No infinite values found in numeric columns.",
-      "rows_affected": 0
+      "detail": "rate: 2.00%",
+      "timestamp": "2026-04-14T04:48:27.096636+00:00"
     },
     {
-      "check_name": "check_no_nan_values",
+      "check_num": 9,
+      "check_name": "day_of_week_valid",
       "passed": true,
-      "severity": "warning",
-      "message": "No NaN values found in any column.",
-      "rows_affected": 0
+      "detail": "range: [0, 6]",
+      "timestamp": "2026-04-14T04:48:27.096742+00:00"
     },
     {
-      "check_name": "check_transaction_amount_under_1m",
+      "check_num": 10,
+      "check_name": "is_weekend_binary",
       "passed": true,
-      "severity": "warning",
-      "message": "All transaction amounts are below 1,000,000.",
-      "rows_affected": 0
+      "detail": "",
+      "timestamp": "2026-04-14T04:48:27.096797+00:00"
     },
     {
-      "check_name": "check_merchant_id_format",
+      "check_num": 11,
+      "check_name": "composite_risk_non_negative",
       "passed": true,
-      "severity": "warning",
-      "message": "All merchant IDs match pattern ^MER\\d+.",
-      "rows_affected": 0
+      "detail": "min: 0.00",
+      "timestamp": "2026-04-14T04:48:27.096838+00:00"
     },
     {
-      "check_name": "check_anomaly_rate_reasonable",
+      "check_num": 12,
+      "check_name": "engineered_features_present",
       "passed": true,
-      "severity": "warning",
-      "message": "Anomaly rate 2.0000% is within acceptable range [0.1%, 20%].",
-      "rows_affected": 0
+      "detail": "all present",
+      "timestamp": "2026-04-14T04:48:27.096847+00:00"
     }
   ]
 }
