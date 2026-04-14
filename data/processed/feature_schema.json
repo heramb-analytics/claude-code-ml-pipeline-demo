@@ -1,179 +1,20 @@
-[
-  {
-    "name": "amount",
-    "dtype": "float64",
-    "description": "amount",
-    "mean": -0.000426
-  },
-  {
-    "name": "num_prev_transactions",
-    "dtype": "float64",
-    "description": "Number of prior transactions for this card",
-    "mean": -0.001436
-  },
-  {
-    "name": "customer_age_years",
-    "dtype": "float64",
-    "description": "Age of the card-holder in years",
-    "mean": -0.007112
-  },
-  {
-    "name": "is_international",
-    "dtype": "int64",
-    "description": "1 if the transaction crossed a national border",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "is_weekend",
-    "dtype": "int64",
-    "description": "1 if the transaction occurred on Saturday or Sunday",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "hour_sin",
-    "dtype": "float64",
-    "description": "Sine encoding of transaction_hour (cyclic, 24-h period)",
-    "mean": -0.006421
-  },
-  {
-    "name": "hour_cos",
-    "dtype": "float64",
-    "description": "Cosine encoding of transaction_hour (cyclic, 24-h period)",
-    "mean": -8.3e-05
-  },
-  {
-    "name": "is_night_hour",
-    "dtype": "int64",
-    "description": "1 if transaction_hour is between 22:00 and 05:59 inclusive",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "amount_log1p",
-    "dtype": "float64",
-    "description": "Natural log(1 + amount) \u2014 compresses right-skewed distribution",
-    "mean": 0.000924
-  },
-  {
-    "name": "amount_zscore",
-    "dtype": "float64",
-    "description": "Z-score of amount fitted on train split",
-    "mean": -0.000426
-  },
-  {
-    "name": "amount_iqr_flag",
-    "dtype": "int64",
-    "description": "1 if amount is an IQR outlier (> Q3 + 1.5*IQR on train)",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "amount_to_mean_ratio",
-    "dtype": "float64",
-    "description": "amount / train-split mean amount",
-    "mean": -0.000426
-  },
-  {
-    "name": "amount_x_international",
-    "dtype": "float64",
-    "description": "Interaction: amount * is_international",
-    "mean": 0.002454
-  },
-  {
-    "name": "amount_x_night",
-    "dtype": "float64",
-    "description": "Interaction: amount * is_night_hour",
-    "mean": 0.000484
-  },
-  {
-    "name": "merchant_cat_dining",
-    "dtype": "int64",
-    "description": "One-hot: merchant_category == 'dining'",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "merchant_cat_electronics",
-    "dtype": "int64",
-    "description": "One-hot: merchant_category == 'electronics'",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "merchant_cat_grocery",
-    "dtype": "int64",
-    "description": "One-hot: merchant_category == 'grocery'",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "merchant_cat_online",
-    "dtype": "int64",
-    "description": "One-hot: merchant_category == 'online'",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "merchant_cat_retail",
-    "dtype": "int64",
-    "description": "One-hot: merchant_category == 'retail'",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "merchant_cat_travel",
-    "dtype": "int64",
-    "description": "One-hot: merchant_category == 'travel'",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "card_type_credit",
-    "dtype": "int64",
-    "description": "One-hot: card_type == 'credit'",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "card_type_debit",
-    "dtype": "int64",
-    "description": "One-hot: card_type == 'debit'",
-    "options": [
-      0,
-      1
-    ]
-  },
-  {
-    "name": "card_type_prepaid",
-    "dtype": "int64",
-    "description": "One-hot: card_type == 'prepaid'",
-    "options": [
-      0,
-      1
-    ]
-  }
-]
+{
+  "timestamp": "datetime64[ns]",
+  "merchant_category": "object",
+  "card_type": "object",
+  "amount": "float64",
+  "num_prev_transactions": "int64",
+  "customer_age_years": "int64",
+  "transaction_hour": "int64",
+  "is_international": "int64",
+  "log_amount": "float64",
+  "amount_zscore": "float64",
+  "is_high_value": "int64",
+  "amount_per_age": "float64",
+  "hour_sin": "float64",
+  "hour_cos": "float64",
+  "is_night": "int64",
+  "is_weekend": "int64",
+  "merchant_category_encoded": "int64",
+  "card_type_encoded": "int64"
+}

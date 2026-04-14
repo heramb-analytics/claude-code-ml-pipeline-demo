@@ -1,38 +1,29 @@
-"""Feature engineering for transaction anomaly detection.
+"""Feature engineering module for transaction anomaly detection pipeline.
 
-This module reads data/processed/clean.parquet, engineers a rich feature set,
-fits all scalers and encoders strictly on the training split (70 % of data),
-and writes:
-  - data/processed/features.parquet  — full feature matrix + is_anomaly label
-  - data/processed/feature_schema.json — feature catalogue
-  - logs/audit.jsonl (appended)       — run metadata
+This module loads cleaned transaction data, engineers domain-specific features,
+and saves the resulting feature set as a parquet file alongside a feature schema JSON.
 """
 
-from __future__ import annotations
-
 import json
-import logging
 import math
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import LabelEncoder
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[2]
-RAW_CLEAN = ROOT / "data" / "processed" / "clean.parquet"
-OUT_FEATURES = ROOT / "data" / "processed" / "features.parquet"
-OUT_SCHEMA = ROOT / "data" / "processed" / "feature_schema.json"
-AUDIT_LOG = ROOT / "logs" / "audit.jsonl"
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
+DATA_PROCESSED = ROOT / "data" / "processed"
+LOGS_DIR = ROOT / "logs"
+
+INPUT_PARQUET = DATA_PROCESSED / "clean.parquet"
+OUTPUT_PARQUET = DATA_PROCESSED / "features.parquet"
+OUTPUT_SCHEMA = DATA_PROCESSED / "feature_schema.json"
+LOG_FILE = LOGS_DIR / "feature_engineering.jsonl"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
@@ -41,267 +32,258 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _append_audit(record: dict[str, Any]) -> None:
-    """Append a JSON-Lines record to the audit log.
+def _log_event(event: dict) -> None:
+    """Append a JSON Lines log entry to the feature engineering log file.
 
     Args:
-        record: Arbitrary key/value pairs to serialise as one JSONL line.
+        event: Dictionary containing log fields. A 'timestamp' key is added
+               automatically if not present.
     """
-    AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
-    with AUDIT_LOG.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record) + "\n")
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    event.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+    with LOG_FILE.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(event) + "\n")
 
 
-def _build_feature_schema(df: pd.DataFrame, ohe_merchant: list[str],
-                           ohe_card: list[str]) -> list[dict[str, Any]]:
-    """Build a feature catalogue for every column in *df*.
+def load_clean_data(path: Path) -> pd.DataFrame:
+    """Load the cleaned parquet file from disk.
 
     Args:
-        df: The final feature matrix (labels excluded).
-        ohe_merchant: One-hot-encoded merchant_category column names.
-        ohe_card: One-hot-encoded card_type column names.
+        path: Absolute path to the clean parquet file.
 
     Returns:
-        List of dicts with keys: name, dtype, description, and either
-        *mean* (numeric) or *options* (categorical / binary OHE).
-    """
-    schema: list[dict[str, Any]] = []
-
-    descriptions: dict[str, str] = {
-        "amount_log1p": "Natural log(1 + amount) — compresses right-skewed distribution",
-        "amount_zscore": "Z-score of amount fitted on train split",
-        "amount_iqr_flag": "1 if amount is an IQR outlier (> Q3 + 1.5*IQR on train)",
-        "amount_to_mean_ratio": "amount / train-split mean amount",
-        "num_prev_transactions": "Number of prior transactions for this card",
-        "customer_age_years": "Age of the card-holder in years",
-        "is_international": "1 if the transaction crossed a national border",
-        "is_weekend": "1 if the transaction occurred on Saturday or Sunday",
-        "is_night_hour": "1 if transaction_hour is between 22:00 and 05:59 inclusive",
-        "hour_sin": "Sine encoding of transaction_hour (cyclic, 24-h period)",
-        "hour_cos": "Cosine encoding of transaction_hour (cyclic, 24-h period)",
-        "amount_x_international": "Interaction: amount * is_international",
-        "amount_x_night": "Interaction: amount * is_night_hour",
-    }
-
-    for col in df.columns:
-        entry: dict[str, Any] = {"name": col, "dtype": str(df[col].dtype)}
-
-        # OHE merchant
-        if col in ohe_merchant:
-            category = col.replace("merchant_cat_", "")
-            entry["description"] = f"One-hot: merchant_category == '{category}'"
-            entry["options"] = [0, 1]
-        # OHE card
-        elif col in ohe_card:
-            ctype = col.replace("card_type_", "")
-            entry["description"] = f"One-hot: card_type == '{ctype}'"
-            entry["options"] = [0, 1]
-        # Binary flags
-        elif col in {"amount_iqr_flag", "is_international", "is_weekend", "is_night_hour"}:
-            entry["description"] = descriptions.get(col, col)
-            entry["options"] = [0, 1]
-        # Numeric
-        else:
-            entry["description"] = descriptions.get(col, col)
-            entry["mean"] = round(float(df[col].mean()), 6)
-
-        schema.append(entry)
-
-    return schema
-
-
-# ---------------------------------------------------------------------------
-# Core pipeline
-# ---------------------------------------------------------------------------
-
-def engineer_features(input_path: Path = RAW_CLEAN) -> pd.DataFrame:
-    """Load clean data, engineer features, persist outputs and return the matrix.
-
-    All scalers / statistics are fitted **only** on the 70 % training split to
-    prevent data leakage; the derived statistics are then applied to the full
-    dataset before saving.
-
-    Args:
-        input_path: Path to the cleaned parquet file.
-
-    Returns:
-        Full feature DataFrame including the *is_anomaly* label column.
+        DataFrame containing the raw cleaned transaction records.
 
     Raises:
-        FileNotFoundError: If *input_path* does not exist.
-        AssertionError: If the output has fewer columns than the input.
+        FileNotFoundError: If the parquet file does not exist at *path*.
     """
-    if not input_path.exists():
-        raise FileNotFoundError(f"Input not found: {input_path}")
-
-    log.info("Loading %s", input_path)
-    df_raw = pd.read_parquet(input_path)
-    input_rows = len(df_raw)
-    input_cols = df_raw.shape[1]
-    log.info("Loaded %d rows × %d columns", input_rows, input_cols)
-
-    # ------------------------------------------------------------------
-    # 1. Train / rest split indices (70 %)  — stratified on is_anomaly
-    # ------------------------------------------------------------------
-    rng = np.random.default_rng(42)
-    anomaly_idx = df_raw.index[df_raw["is_anomaly"] == 1].tolist()
-    normal_idx = df_raw.index[df_raw["is_anomaly"] == 0].tolist()
-
-    rng.shuffle(anomaly_idx)
-    rng.shuffle(normal_idx)
-
-    n_train_anomaly = math.floor(0.70 * len(anomaly_idx))
-    n_train_normal = math.floor(0.70 * len(normal_idx))
-
-    train_idx = set(anomaly_idx[:n_train_anomaly] + normal_idx[:n_train_normal])
-    train_mask = df_raw.index.isin(train_idx)
-
-    log.info("Train rows: %d  |  Hold-out rows: %d",
-             train_mask.sum(), (~train_mask).sum())
-
-    # ------------------------------------------------------------------
-    # 2. Extract target and drop non-feature columns
-    # ------------------------------------------------------------------
-    label = df_raw["is_anomaly"].copy()
-    df = df_raw.drop(columns=["transaction_id", "merchant_id", "is_anomaly"])
-
-    # ------------------------------------------------------------------
-    # 3. Temporal features (derived from timestamp, then drop it)
-    # ------------------------------------------------------------------
-    ts = pd.to_datetime(df["timestamp"])
-    df["is_weekend"] = ts.dt.dayofweek.ge(5).astype(int)
-    df = df.drop(columns=["timestamp"])
-
-    # ------------------------------------------------------------------
-    # 4. Cyclic hour encoding
-    # ------------------------------------------------------------------
-    df["hour_sin"] = np.sin(2 * np.pi * df["transaction_hour"] / 24)
-    df["hour_cos"] = np.cos(2 * np.pi * df["transaction_hour"] / 24)
-
-    # ------------------------------------------------------------------
-    # 5. Night-hour flag  (22:00 – 05:59)
-    # ------------------------------------------------------------------
-    df["is_night_hour"] = df["transaction_hour"].apply(
-        lambda h: 1 if h >= 22 or h <= 5 else 0
-    )
-
-    # ------------------------------------------------------------------
-    # 6. Numeric amount features — fit statistics on TRAIN only
-    # ------------------------------------------------------------------
-    train_amount = df.loc[train_mask, "amount"]
-
-    # log1p
-    df["amount_log1p"] = np.log1p(df["amount"])
-
-    # Z-score (train mean/std)
-    amt_mean = train_amount.mean()
-    amt_std = train_amount.std(ddof=1)
-    df["amount_zscore"] = (df["amount"] - amt_mean) / amt_std
-
-    # IQR flag (train Q1/Q3)
-    q1 = train_amount.quantile(0.25)
-    q3 = train_amount.quantile(0.75)
-    iqr = q3 - q1
-    upper_fence = q3 + 1.5 * iqr
-    df["amount_iqr_flag"] = (df["amount"] > upper_fence).astype(int)
-
-    # ratio to train mean
-    df["amount_to_mean_ratio"] = df["amount"] / amt_mean
-
-    # ------------------------------------------------------------------
-    # 7. Interaction features
-    # ------------------------------------------------------------------
-    df["amount_x_international"] = df["amount"] * df["is_international"]
-    df["amount_x_night"] = df["amount"] * df["is_night_hour"]
-
-    # ------------------------------------------------------------------
-    # 8. One-hot encode merchant_category and card_type
-    # ------------------------------------------------------------------
-    merchant_dummies = pd.get_dummies(
-        df["merchant_category"], prefix="merchant_cat", dtype=int
-    )
-    card_dummies = pd.get_dummies(
-        df["card_type"], prefix="card_type", dtype=int
-    )
-
-    ohe_merchant_cols = merchant_dummies.columns.tolist()
-    ohe_card_cols = card_dummies.columns.tolist()
-
-    df = pd.concat([df, merchant_dummies, card_dummies], axis=1)
-    df = df.drop(columns=["merchant_category", "card_type", "transaction_hour"])
-
-    # ------------------------------------------------------------------
-    # 9. StandardScaler on continuous numerics — fit on train only
-    # ------------------------------------------------------------------
-    continuous_cols = [
-        "amount", "amount_log1p", "amount_zscore", "amount_to_mean_ratio",
-        "num_prev_transactions", "customer_age_years",
-        "hour_sin", "hour_cos", "amount_x_international", "amount_x_night",
-    ]
-    scaler = StandardScaler()
-    scaler.fit(df.loc[train_mask, continuous_cols])
-    df[continuous_cols] = scaler.transform(df[continuous_cols])
-
-    # ------------------------------------------------------------------
-    # 10. Re-attach label
-    # ------------------------------------------------------------------
-    df["is_anomaly"] = label.values
-
-    # ------------------------------------------------------------------
-    # 11. Sanity assertions
-    # ------------------------------------------------------------------
-    assert df.shape[1] > input_cols, (
-        f"Output columns ({df.shape[1]}) must exceed input columns ({input_cols})"
-    )
-    assert df.isnull().sum().sum() == 0, "Feature matrix contains NaN values"
-    log.info("Feature matrix: %d rows × %d columns (label included)", *df.shape)
-
-    # ------------------------------------------------------------------
-    # 12. Persist features.parquet
-    # ------------------------------------------------------------------
-    OUT_FEATURES.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(OUT_FEATURES, index=False)
-    log.info("Saved features → %s", OUT_FEATURES)
-
-    # ------------------------------------------------------------------
-    # 13. Build and persist feature_schema.json
-    # ------------------------------------------------------------------
-    feature_df = df.drop(columns=["is_anomaly"])
-    schema = _build_feature_schema(feature_df, ohe_merchant_cols, ohe_card_cols)
-
-    OUT_SCHEMA.parent.mkdir(parents=True, exist_ok=True)
-    with OUT_SCHEMA.open("w", encoding="utf-8") as fh:
-        json.dump(schema, fh, indent=2)
-    log.info("Saved schema  → %s  (%d features)", OUT_SCHEMA, len(schema))
-
-    # ------------------------------------------------------------------
-    # 14. Audit log
-    # ------------------------------------------------------------------
-    audit_record = {
-        "event": "feature_engineering",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "input_rows": input_rows,
-        "output_features": len(schema),
-        "output_rows": len(df),
-        "train_rows": int(train_mask.sum()),
-        "output_path": str(OUT_FEATURES),
-        "schema_path": str(OUT_SCHEMA),
-    }
-    _append_audit(audit_record)
-    log.info("Audit entry appended → %s", AUDIT_LOG)
-
+    if not path.exists():
+        raise FileNotFoundError(f"Clean parquet not found: {path}")
+    df = pd.read_parquet(path)
+    _log_event({
+        "stage": "load",
+        "status": "ok",
+        "rows": len(df),
+        "columns": list(df.columns),
+    })
+    log.info("Loaded %d rows × %d columns from %s", len(df), df.shape[1], path)
     return df
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+def engineer_amount_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Derive amount-based features.
+
+    Features created:
+        - log_amount: log1p transformation of raw amount.
+        - amount_zscore: z-score of amount within each merchant_category group.
+        - is_high_value: 1 if amount exceeds the 95th-percentile threshold, else 0.
+        - amount_per_age: amount divided by (customer_age_years + 1) to prevent
+          division by zero.
+
+    Args:
+        df: DataFrame that must contain 'amount', 'merchant_category', and
+            'customer_age_years' columns.
+
+    Returns:
+        DataFrame with the four new columns appended.
+    """
+    df = df.copy()
+
+    df["log_amount"] = np.log1p(df["amount"])
+
+    grp = df.groupby("merchant_category")["amount"]
+    df["amount_zscore"] = (df["amount"] - grp.transform("mean")) / (
+        grp.transform("std").replace(0, 1)
+    )
+
+    p95 = df["amount"].quantile(0.95)
+    df["is_high_value"] = (df["amount"] > p95).astype(int)
+
+    df["amount_per_age"] = df["amount"] / (df["customer_age_years"] + 1)
+
+    _log_event({
+        "stage": "amount_features",
+        "status": "ok",
+        "p95_threshold": float(p95),
+        "high_value_count": int(df["is_high_value"].sum()),
+    })
+    log.info("Engineered amount features (p95=%.2f, high_value=%d)", p95, df["is_high_value"].sum())
+    return df
+
+
+def engineer_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Derive time-based cyclical and categorical features.
+
+    Features created:
+        - hour_sin: sine of the transaction hour mapped to a 24-hour circle.
+        - hour_cos: cosine of the transaction hour mapped to a 24-hour circle.
+        - is_night: 1 if transaction_hour is in {22,23,0,1,2,3,4,5}, else 0.
+        - is_weekend: 1 if the transaction date falls on Saturday or Sunday, else 0.
+
+    Args:
+        df: DataFrame containing 'transaction_hour' (int) and 'timestamp'
+            (datetime64) columns.
+
+    Returns:
+        DataFrame with the four new columns appended.
+    """
+    df = df.copy()
+
+    hours = df["transaction_hour"].astype(float)
+    df["hour_sin"] = np.sin(2 * math.pi * hours / 24)
+    df["hour_cos"] = np.cos(2 * math.pi * hours / 24)
+
+    night_hours = {22, 23, 0, 1, 2, 3, 4, 5}
+    df["is_night"] = df["transaction_hour"].isin(night_hours).astype(int)
+
+    df["is_weekend"] = (pd.to_datetime(df["timestamp"]).dt.dayofweek >= 5).astype(int)
+
+    _log_event({
+        "stage": "time_features",
+        "status": "ok",
+        "night_transactions": int(df["is_night"].sum()),
+        "weekend_transactions": int(df["is_weekend"].sum()),
+    })
+    log.info("Engineered time features (night=%d, weekend=%d)", df["is_night"].sum(), df["is_weekend"].sum())
+    return df
+
+
+def engineer_categorical_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Label-encode high-cardinality categorical columns.
+
+    Features created:
+        - merchant_category_encoded: integer label encoding of 'merchant_category'.
+        - card_type_encoded: integer label encoding of 'card_type'.
+
+    Args:
+        df: DataFrame containing 'merchant_category' and 'card_type' string columns.
+
+    Returns:
+        DataFrame with the two new encoded columns appended.
+    """
+    df = df.copy()
+
+    le_cat = LabelEncoder()
+    df["merchant_category_encoded"] = le_cat.fit_transform(
+        df["merchant_category"].astype(str)
+    )
+
+    le_card = LabelEncoder()
+    df["card_type_encoded"] = le_card.fit_transform(df["card_type"].astype(str))
+
+    _log_event({
+        "stage": "categorical_features",
+        "status": "ok",
+        "merchant_category_classes": list(le_cat.classes_),
+        "card_type_classes": list(le_card.classes_),
+    })
+    log.info(
+        "Label-encoded merchant_category (%d classes) and card_type (%d classes)",
+        len(le_cat.classes_),
+        len(le_card.classes_),
+    )
+    return df
+
+
+def drop_identifier_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove high-cardinality identifier columns not useful for modelling.
+
+    Drops 'transaction_id' and 'merchant_id' from the DataFrame.
+
+    Args:
+        df: Input DataFrame potentially containing identifier columns.
+
+    Returns:
+        DataFrame with identifier columns removed.
+    """
+    cols_to_drop = [c for c in ["transaction_id", "merchant_id"] if c in df.columns]
+    df = df.drop(columns=cols_to_drop)
+    _log_event({
+        "stage": "drop_identifiers",
+        "status": "ok",
+        "dropped_columns": cols_to_drop,
+    })
+    log.info("Dropped identifier columns: %s", cols_to_drop)
+    return df
+
+
+def save_features(df: pd.DataFrame, parquet_path: Path, schema_path: Path) -> None:
+    """Persist the feature DataFrame as parquet and write a feature schema JSON.
+
+    The schema JSON maps each column name (excluding 'is_anomaly') to its pandas
+    dtype string, enabling downstream consumers to validate the feature set.
+
+    Args:
+        df: Feature DataFrame to save. Must contain an 'is_anomaly' target column.
+        parquet_path: Destination path for the parquet file.
+        schema_path: Destination path for the feature schema JSON.
+    """
+    parquet_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(parquet_path, index=False)
+    log.info("Saved features.parquet → %s  (%d rows × %d cols)", parquet_path, *df.shape)
+
+    schema = {
+        col: str(df[col].dtype)
+        for col in df.columns
+        if col != "is_anomaly"
+    }
+    schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
+    log.info("Saved feature_schema.json → %s  (%d features)", schema_path, len(schema))
+
+    _log_event({
+        "stage": "save",
+        "status": "ok",
+        "parquet_path": str(parquet_path),
+        "schema_path": str(schema_path),
+        "feature_count": len(schema),
+        "row_count": len(df),
+        "columns_saved": list(df.columns),
+    })
+
+
+def run_feature_engineering() -> pd.DataFrame:
+    """Execute the full feature engineering pipeline end-to-end.
+
+    Steps:
+        1. Load clean.parquet from data/processed/.
+        2. Engineer amount-based features (log_amount, amount_zscore,
+           is_high_value, amount_per_age).
+        3. Engineer time-based features (hour_sin, hour_cos, is_night, is_weekend).
+        4. Engineer categorical features (merchant_category_encoded, card_type_encoded).
+        5. Drop identifier columns (transaction_id, merchant_id).
+        6. Save features.parquet and feature_schema.json to data/processed/.
+
+    Returns:
+        The final feature DataFrame including the 'is_anomaly' label column.
+    """
+    _log_event({"stage": "start", "status": "started", "input": str(INPUT_PARQUET)})
+    log.info("=== Feature Engineering Pipeline START ===")
+
+    df = load_clean_data(INPUT_PARQUET)
+    df = engineer_amount_features(df)
+    df = engineer_time_features(df)
+    df = engineer_categorical_features(df)
+    df = drop_identifier_columns(df)
+    save_features(df, OUTPUT_PARQUET, OUTPUT_SCHEMA)
+
+    feature_cols = [c for c in df.columns if c != "is_anomaly"]
+    _log_event({
+        "stage": "complete",
+        "status": "success",
+        "total_features": len(feature_cols),
+        "total_rows": len(df),
+    })
+    log.info("=== Feature Engineering Pipeline COMPLETE — %d features ===", len(feature_cols))
+    return df
+
 
 if __name__ == "__main__":
-    result = engineer_features()
-    print(f"\nDone. features.parquet shape: {result.shape}")
-    print(f"Columns: {result.columns.tolist()}")
+    df_features = run_feature_engineering()
+    feature_cols = [c for c in df_features.columns if c != "is_anomaly"]
+    print(
+        f"\nFeature engineering complete.\n"
+        f"  Output  : {OUTPUT_PARQUET}\n"
+        f"  Schema  : {OUTPUT_SCHEMA}\n"
+        f"  Rows    : {len(df_features)}\n"
+        f"  Features ({len(feature_cols)}): {feature_cols}"
+    )
