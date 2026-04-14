@@ -1,0 +1,91 @@
+{
+  "total_checks": 12,
+  "passed": 12,
+  "failed": 0,
+  "checks": [
+    {
+      "check_name": "check_required_columns",
+      "passed": true,
+      "severity": "critical",
+      "message": "All required columns present.",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_dtypes",
+      "passed": true,
+      "severity": "critical",
+      "message": "Dtype constraints satisfied.",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_no_nulls_key_cols",
+      "passed": true,
+      "severity": "critical",
+      "message": "No nulls in key columns.",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_amount_positive",
+      "passed": true,
+      "severity": "critical",
+      "message": "All amounts are positive.",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_timestamp_valid",
+      "passed": true,
+      "severity": "critical",
+      "message": "All timestamps in valid range [2020-01-01, 2030-12-31].",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_categories_valid",
+      "passed": true,
+      "severity": "critical",
+      "message": "All merchant categories are valid: ['dining', 'electronics', 'grocery', 'online', 'retail', 'travel'].",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_amount_mean_within_3std",
+      "passed": true,
+      "severity": "warning",
+      "message": "Mean amount 652.92 is within 3 std (13420.62) of expected centre 500.0.",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_no_infinite_values",
+      "passed": true,
+      "severity": "warning",
+      "message": "No infinite values found in numeric columns.",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_no_nan_values",
+      "passed": true,
+      "severity": "warning",
+      "message": "No NaN values found in any column.",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_transaction_amount_under_1m",
+      "passed": true,
+      "severity": "warning",
+      "message": "All transaction amounts are below 1,000,000.",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_merchant_id_format",
+      "passed": true,
+      "severity": "warning",
+      "message": "All merchant IDs match pattern ^MER\\d+.",
+      "rows_affected": 0
+    },
+    {
+      "check_name": "check_anomaly_rate_reasonable",
+      "passed": true,
+      "severity": "warning",
+      "message": "Anomaly rate 2.0000% is within acceptable range [0.1%, 20%].",
+      "rows_affected": 0
+    }
+  ]
+}
